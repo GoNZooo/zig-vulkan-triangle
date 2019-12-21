@@ -17,6 +17,9 @@ pub fn build(b: *Builder) void {
     const run_cmd = exe.run();
     run_step.dependOn(&run_cmd.step);
 
+    // This plain doesn't work (at least on Windows) with the Windows binary name and having
+    // `glslc.exe` on your path; `InvalidName` gets returned anyway. Compiling the headers first
+    // is good enough to just get started, I imagine, anyway.
     // try addShader(b, exe, "shader.vert", "vert.spv");
     // try addShader(b, exe, "shader.frag", "frag.spv");
 }
