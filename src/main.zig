@@ -11,8 +11,8 @@ const HEIGHT = 600;
 const MAX_FRAMES_IN_FLIGHT = 2;
 
 const enableValidationLayers = std.debug.runtime_safety;
-const validationLayers = [_][*]const u8{c"VK_LAYER_LUNARG_standard_validation"};
-const deviceExtensions = [_][*]const u8{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+const validationLayers = [_][*:0]const u8{"VK_LAYER_LUNARG_standard_validation"};
+const deviceExtensions = [_][*:0]const u8{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 var currentFrame: usize = 0;
 var instance: c.VkInstance = undefined;
@@ -65,7 +65,8 @@ const SwapChainSupportDetails = struct {
             .formats = std.ArrayList(c.VkSurfaceFormatKHR).init(allocator),
             .presentModes = std.ArrayList(c.VkPresentModeKHR).init(allocator),
         };
-        const slice = @sliceToBytes((*[1]c.VkSurfaceCapabilitiesKHR)(&result.capabilities)[0..1]);
+        // (*[1]c.VkSurfaceCapabilitiesKHR)
+        const slice = @sliceToBytes(@ptrCast(*[1]c.VkSurfaceCapabilitiesKHR, (&result.capabilities))[0..1]);
         std.mem.set(u8, slice, 0);
         return result;
     }
@@ -83,7 +84,7 @@ pub fn main() !void {
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
-    const window = c.glfwCreateWindow(WIDTH, HEIGHT, c"Zig Vulkan Triangle", null, null) orelse return error.GlfwCreateWindowFailed;
+    const window = c.glfwCreateWindow(WIDTH, HEIGHT, "Zig Vulkan Triangle", null, null) orelse return error.GlfwCreateWindowFailed;
     defer c.glfwDestroyWindow(window);
 
     const allocator = std.heap.c_allocator;
@@ -272,10 +273,21 @@ fn createShaderModule(code: []align(@alignOf(u32)) const u8) !c.VkShaderModule {
 }
 
 fn createGraphicsPipeline(allocator: *Allocator) !void {
-    const vertShaderCode = try std.io.readFileAllocAligned(allocator, "shaders/vert.spv", @alignOf(u32));
+    const cwd = std.fs.cwd();
+    const vertShaderCode = try cwd.readFileAllocAligned(
+        allocator,
+        "shaders/vert.spv",
+        4096,
+        @alignOf(u32),
+    );
     defer allocator.free(vertShaderCode);
 
-    const fragShaderCode = try std.io.readFileAllocAligned(allocator, "shaders/frag.spv", @alignOf(u32));
+    const fragShaderCode = try cwd.readFileAllocAligned(
+        allocator,
+        "shaders/frag.spv",
+        4096,
+        @alignOf(u32),
+    );
     defer allocator.free(fragShaderCode);
 
     const vertShaderModule = try createShaderModule(vertShaderCode);
@@ -285,7 +297,7 @@ fn createGraphicsPipeline(allocator: *Allocator) !void {
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
         .module = vertShaderModule,
-        .pName = c"main",
+        .pName = "main",
 
         .pNext = null,
         .flags = 0,
@@ -296,7 +308,7 @@ fn createGraphicsPipeline(allocator: *Allocator) !void {
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
         .module = fragShaderModule,
-        .pName = c"main",
+        .pName = "main",
         .pNext = null,
         .flags = 0,
 
@@ -443,7 +455,7 @@ fn createGraphicsPipeline(allocator: *Allocator) !void {
         @intCast(u32, pipelineInfo.len),
         &pipelineInfo,
         null,
-        (*[1]c.VkPipeline)(&graphicsPipeline),
+        @ptrCast(*[1]c.VkPipeline, &graphicsPipeline),
     ));
 
     c.vkDestroyShaderModule(global_device, fragShaderModule, null);
@@ -471,7 +483,7 @@ fn createRenderPass() !void {
     const subpass = [_]c.VkSubpassDescription{c.VkSubpassDescription{
         .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
-        .pColorAttachments = (*const [1]c.VkAttachmentReference)(&colorAttachmentRef),
+        .pColorAttachments = @ptrCast(*const [1]c.VkAttachmentReference, &colorAttachmentRef),
 
         .flags = 0,
         .inputAttachmentCount = 0,
@@ -496,7 +508,7 @@ fn createRenderPass() !void {
     const renderPassInfo = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = 1,
-        .pAttachments = (*const [1]c.VkAttachmentDescription)(&colorAttachment),
+        .pAttachments = @ptrCast(*const [1]c.VkAttachmentDescription, &colorAttachment),
         .subpassCount = 1,
         .pSubpasses = &subpass,
         .dependencyCount = 1,
@@ -622,7 +634,7 @@ fn createSwapChain(allocator: *Allocator) !void {
         .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
 
         .imageSharingMode = if (different_families) c.VK_SHARING_MODE_CONCURRENT else c.VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = if (different_families) u32(2) else u32(0),
+        .queueFamilyIndexCount = if (different_families) @as(u32, 2) else @as(u32, 0),
         .pQueueFamilyIndices = if (different_families) &queueFamilyIndices else &([_]u32{ 0, 0 }),
 
         .preTransform = swapChainSupport.capabilities.currentTransform,
@@ -852,7 +864,7 @@ fn checkDeviceExtensionSupport(allocator: *Allocator, device: c.VkPhysicalDevice
     defer allocator.free(availableExtensions);
     try checkSuccess(c.vkEnumerateDeviceExtensionProperties(device, null, &extensionCount, availableExtensions.ptr));
 
-    var requiredExtensions = std.HashMap([*]const u8, void, hash_cstr, eql_cstr).init(allocator);
+    var requiredExtensions = std.HashMap([*:0]const u8, void, hash_cstr, eql_cstr).init(allocator);
     defer requiredExtensions.deinit();
     for (deviceExtensions) |device_ext| {
         _ = try requiredExtensions.put(device_ext, {});
@@ -909,7 +921,7 @@ fn DestroyDebugReportCallbackEXT(
 ) void {
     const func = @ptrCast(c.PFN_vkDestroyDebugReportCallbackEXT, c.vkGetInstanceProcAddr(
         instance,
-        c"vkDestroyDebugReportCallbackEXT",
+        "vkDestroyDebugReportCallbackEXT",
     )) orelse unreachable;
     func(instance, callback, pAllocator);
 }
@@ -921,7 +933,7 @@ fn CreateDebugReportCallbackEXT(
 ) c.VkResult {
     const func = @ptrCast(c.PFN_vkCreateDebugReportCallbackEXT, c.vkGetInstanceProcAddr(
         instance,
-        c"vkCreateDebugReportCallbackEXT",
+        "vkCreateDebugReportCallbackEXT",
     )) orelse return c.VK_ERROR_EXTENSION_NOT_PRESENT;
     return func(instance, pCreateInfo, pAllocator, pCallback);
 }
@@ -935,9 +947,9 @@ fn createInstance(allocator: *Allocator) !void {
 
     const appInfo = c.VkApplicationInfo{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = c"Hello Triangle",
+        .pApplicationName = "Hello Triangle",
         .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
-        .pEngineName = c"No Engine",
+        .pEngineName = "No Engine",
         .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
         .apiVersion = c.VK_API_VERSION_1_0,
         .pNext = null,
@@ -1071,6 +1083,6 @@ fn hash_cstr(a: [*]const u8) u32 {
     return h;
 }
 
-fn eql_cstr(a: [*]const u8, b: [*]const u8) bool {
+fn eql_cstr(a: [*:0]const u8, b: [*:0]const u8) bool {
     return std.cstr.cmp(a, b) == 0;
 }
